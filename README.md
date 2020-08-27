@@ -6,7 +6,7 @@ vitepay的支付宝支付网关。
 
 ## 安装
 
-    composer require vitepay/core vitepay/alipay
+    composer require vitepay/alipay
     
 
 
