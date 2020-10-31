@@ -217,7 +217,7 @@ class BaseGateway extends Gateway
         $response = json_decode($content, true);
         
         if ($response === null) {
-            echo json_last_error_msg();
+            //echo json_last_error_msg();
             throw new \RuntimeException(json_last_error_msg());
         }
         
