@@ -10,6 +10,8 @@ use Psr\Http\Message\ResponseInterface;
 use Symfony\Component\OptionsResolver\Options;
 use Symfony\Component\OptionsResolver\OptionsResolver;
 use think\Cache;
+use think\facade\Log;
+use think\helper\Str;
 use think\Request;
 use vitepay\core\entity\PurchaseResponse;
 use vitepay\core\Gateway;
@@ -127,6 +129,13 @@ class BaseGateway extends Gateway
         
         unset($data[ 'sign' ], $data[ 'sign_type' ]);
         
+        if ($this->isLog()) {
+            Log::info(
+              'alipay:Notice'.
+              json_encode([$data, $sign, $this->buildSignContent($data)], JSON_UNESCAPED_SLASHES && JSON_UNESCAPED_UNICODE)
+            );
+        }
+        
         $this->verifySign($this->buildSignContent($data), $sign);
         
         $charge = $this->retrieveCharge($data[ 'out_trade_no' ]);
@@ -166,6 +175,9 @@ class BaseGateway extends Gateway
      */
     public function verifySign($data, $sign)
     {
+        if ($this->isLog()) {
+            Log::info('alipay:verifySign'.$data);
+        }
         $key = convert_key($this->getOption('alipay_public_key'), 'public key');
         if ('RSA2' == $this->getOption('sign_type')) {
             $result = (bool)openssl_verify($data, base64_decode($sign), $key, OPENSSL_ALGO_SHA256);
@@ -186,7 +198,12 @@ class BaseGateway extends Gateway
     public function generateSign(array $params) : string
     {
         $data = $this->buildSignContent($params);
-        $key  = convert_key($this->getOption('app_private_key'), 'RSA PRIVATE key');
+        
+        if ($this->isLog()) {
+            Log::info('alipay:generateSign:'.$data);
+        }
+        
+        $key = convert_key($this->getOption('app_private_key'), 'RSA PRIVATE key');
         if ("RSA2" == $params[ 'sign_type' ]) {
             openssl_sign($data, $sign, $key, OPENSSL_ALGO_SHA256);
         }
@@ -220,7 +237,9 @@ class BaseGateway extends Gateway
             //echo json_last_error_msg();
             throw new \RuntimeException(json_last_error_msg());
         }
-        
+        if ($this->isLog()) {
+            Log::info('alipay:response'.json_encode([$response], JSON_UNESCAPED_UNICODE || JSON_UNESCAPED_SLASHES));
+        }
         $key = str_replace('.', '_', $method).'_response';
         if (!isset($response[ $key ])) {
             throw new \RuntimeException('系统繁忙');
@@ -228,11 +247,13 @@ class BaseGateway extends Gateway
         
         $result = $response[ $key ];
         
-        $this->verifySign(json_encode($result, JSON_UNESCAPED_UNICODE), $response[ 'sign' ] ?? '');
-        
         if (empty($result[ 'code' ]) || $result[ 'code' ] != 10000) {
-            throw new DomainException(isset($result[ 'sub_msg' ]) ? $result[ 'sub_msg' ] : $result[ 'msg' ]);
+            throw new DomainException(
+              htmlspecialchars_decode(isset($result[ 'sub_msg' ]) ? $result[ 'sub_msg' ] : $result[ 'msg' ])
+            );
         }
+        
+        $this->verifySign(json_encode($result, JSON_UNESCAPED_UNICODE), $response[ 'sign' ] ?? '');
         
         return $result;
     }
